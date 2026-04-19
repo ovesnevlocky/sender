@@ -1,0 +1,86 @@
+.
+├── UDP_Communication_Framework
+│   ├── Debug
+│   │   ├── UDP_Communication_Framework.pdb
+│   │   ├── a.jpg
+│   │   ├── monk.jpeg
+│   │   ├── monk2.jpg
+│   │   ├── test.txt
+│   │   └── vit_small.ppm
+│   ├── UDP_Communication_Framework
+│   │   ├── Debug
+│   │   │   ├── UDP_Comm.21D0050F.tlog
+│   │   │   │   ├── CL.command.1.tlog
+│   │   │   │   ├── CL.read.1.tlog
+│   │   │   │   ├── CL.write.1.tlog
+│   │   │   │   ├── Cl.items.tlog
+│   │   │   │   ├── UDP_Communication_Framework.lastbuildstate
+│   │   │   │   ├── link-cvtres.read.1.tlog
+│   │   │   │   ├── link-cvtres.write.1.tlog
+│   │   │   │   ├── link-rc.read.1.tlog
+│   │   │   │   ├── link-rc.write.1.tlog
+│   │   │   │   ├── link.25976-cvtres.read.1.tlog
+│   │   │   │   ├── link.25976-cvtres.write.1.tlog
+│   │   │   │   ├── link.25976-rc.read.1.tlog
+│   │   │   │   ├── link.25976-rc.write.1.tlog
+│   │   │   │   ├── link.25976.read.1.tlog
+│   │   │   │   ├── link.25976.write.1.tlog
+│   │   │   │   ├── link.command.1.tlog
+│   │   │   │   ├── link.read.1.tlog
+│   │   │   │   ├── link.secondary.1.tlog
+│   │   │   │   ├── link.write.1.tlog
+│   │   │   │   └── unsuccessfulbuild
+│   │   │   ├── UDP_Communication_Framework.Build.CppClean.log
+│   │   │   ├── UDP_Communication_Framework.exe.recipe
+│   │   │   ├── UDP_Communication_Framework.log
+│   │   │   ├── UDP_Communication_Framework.obj
+│   │   │   ├── UDP_Communication_Framework.pch
+│   │   │   ├── UDP_Communication_Framework.vcxproj.FileListAbsolute.txt
+│   │   │   ├── stdafx.obj
+│   │   │   ├── vc143.idb
+│   │   │   ├── vc143.pdb
+│   │   │   └── vcpkg.applocal.log
+│   │   ├── ReadMe.txt
+│   │   ├── UDP_Communication_Framework.cpp
+│   │   ├── UDP_Communication_Framework.vcxproj
+│   │   ├── UDP_Communication_Framework.vcxproj.filters
+│   │   ├── UDP_Communication_Framework.vcxproj.user
+│   │   ├── md5.cpp
+│   │   ├── md5.h
+│   │   ├── stdafx.cpp
+│   │   ├── stdafx.h
+│   │   ├── targetver.h
+│   │   └── x64
+│   │       └── Debug
+│   │           ├── UDP_Comm.21D0050F.tlog
+│   │           │   ├── CL.command.1.tlog
+│   │           │   ├── CL.read.1.tlog
+│   │           │   ├── CL.write.1.tlog
+│   │           │   ├── Cl.items.tlog
+│   │           │   ├── UDP_Communication_Framework.lastbuildstate
+│   │           │   ├── link.command.1.tlog
+│   │           │   ├── link.read.1.tlog
+│   │           │   ├── link.secondary.1.tlog
+│   │           │   └── link.write.1.tlog
+│   │           ├── UDP_Communication_Framework.Build.CppClean.log
+│   │           ├── UDP_Communication_Framework.exe.recipe
+│   │           ├── UDP_Communication_Framework.ilk
+│   │           ├── UDP_Communication_Framework.log
+│   │           ├── UDP_Communication_Framework.obj
+│   │           ├── UDP_Communication_Framework.pch
+│   │           ├── UDP_Communication_Framework.vcxproj.FileListAbsolute.txt
+│   │           ├── stdafx.obj
+│   │           ├── vc143.idb
+│   │           └── vc143.pdb
+│   ├── UDP_Communication_Framework.VC.db
+│   ├── UDP_Communication_Framework.sln
+│   ├── ipch
+│   │   └── UDP_COMMUNICATION_FRAMEWORK-719253ed
+│   │       └── UDP_COMMUNICATION_FRAMEWORK-ce9a9b97.ipch
+│   └── x64
+│       └── Debug
+│           ├── UDP_Communication_Framework.exe
+│           └── UDP_Communication_Framework.pdb
+└── tree.txt
+
+13 directories, 71 files
