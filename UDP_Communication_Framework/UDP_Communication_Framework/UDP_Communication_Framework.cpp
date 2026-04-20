@@ -78,7 +78,8 @@ int main()
 	struct PacketStruct dataToSend = { 0 };
 	int addrDstlen = sizeof(addrDst);
 
-	FILE* fp = fopen("test.txt", "rb");
+	char* inputFile = "test.txt";
+	FILE* fp = fopen(inputFile, "rb");
 	if (!fp)
 		printf("%s\n", strerror(errno));
 	
@@ -138,21 +139,27 @@ int main()
 	memset(dataReceived.payload, 0, BUFFERS_LEN);
 	sendto(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&addrDst, sizeof(addrDst));
 	
+	
 	char* resInput = (char*)calloc(TotalLen, 1);
+	
 	u8 resData[16] = { 0 };
 
 	rewind(fp);
-	TotalLen = fread(resInput, 1, TotalLen, fp);
+	//FILE *getMd5 = fopen()
+	TotalLen = fread(resInput,sizeof(u8), TotalLen, fp);
+	printf("%lu\n", TotalLen);
+
 	for (int i = 0; i < TotalLen; i++)
 		putchar(resInput[i]);
 	putchar('\n');
+
 	md5String(resInput, resData);
 	print_hash(resData);
 
 	closesocket(socketS);
 	fclose(fp);
 	free(resInput);
-	//free(resData);
+	
 	getchar(); //wait for press Enter
 	
 	return 0;
