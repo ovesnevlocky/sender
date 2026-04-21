@@ -79,7 +79,7 @@ int main()
 	struct PacketStruct dataToSend = { 0 };
 	int addrDstlen = sizeof(addrDst);
 
-	char* inputFile = "monk2.jpg";
+	char* inputFile = "file.mp4";
 	FILE* fp = fopen(inputFile, "rb");
 	if (!fp)
 		printf("%s\n", strerror(errno));
@@ -101,6 +101,7 @@ int main()
 	u32 crc32;
 	while(1)
 	{
+		
 		fseek(fp, pos, SEEK_SET);
 		sendingPacketLength = fread(dataToSend.payload, sizeof(u8), sizeof(dataToSend.payload), fp);
 		if (sendingPacketLength <= 0)
@@ -117,7 +118,7 @@ int main()
 		//printf("0x%X\n", dataToSend.crc32);
 		
 		sendto(socketS, (char*)&dataToSend, sizeof(dataToSend), 0, (sockaddr*)&addrDst, sizeof(addrDst));
-
+		//reset this packet everytime to avoid confusion
 		memset(&dataReceived, 0, sizeof(dataReceived));
 		check = recvfrom(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&addrDst, &addrDstlen);
 		int timeout = 3000; // 3sec
@@ -148,13 +149,9 @@ int main()
 
 	rewind(fp);
 	TotalLen = fread(resInput,sizeof(u8), TotalLen, fp);
-	
+	printf("size is: %lu", TotalLen);
 	resInput[TotalLen] = '\0';
 	md5String(resInput, resData);
-	print_hash(resData);
-
-	memset(resData, 0, 16);
-	md5String("hello", resData);
 	print_hash(resData);
 
 	
