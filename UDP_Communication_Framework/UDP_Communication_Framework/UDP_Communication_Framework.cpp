@@ -10,7 +10,7 @@
 #include <string.h>
 #include "md5.h"
 #include "crc32.h"
-#define BUFFERS_LEN 10
+#define BUFFERS_LEN 1024
 
 enum
 {
@@ -27,7 +27,8 @@ typedef uint32_t u32;
 
 struct PacketStruct
 {
-	u32 packet_type;
+	//u32 packet_type;
+	u8  packet_type;
 	u32 packet_len;
 	u32 crc32;
 	//keep track of position in a file
@@ -78,7 +79,7 @@ int main()
 	struct PacketStruct dataToSend = { 0 };
 	int addrDstlen = sizeof(addrDst);
 
-	char* inputFile = "test.txt";
+	char* inputFile = "monk2.jpg";
 	FILE* fp = fopen(inputFile, "rb");
 	if (!fp)
 		printf("%s\n", strerror(errno));
@@ -101,7 +102,7 @@ int main()
 	while(1)
 	{
 		fseek(fp, pos, SEEK_SET);
-		sendingPacketLength = fread(dataToSend.payload, sizeof(char), sizeof(dataToSend.payload), fp);
+		sendingPacketLength = fread(dataToSend.payload, sizeof(u8), sizeof(dataToSend.payload), fp);
 		if (sendingPacketLength <= 0)
 			break;
 		
@@ -113,7 +114,7 @@ int main()
 		pos += dataToSend.packet_len;
 		
 		dataToSend.crc32 = CRC_CalculateCRC32(dataToSend.payload, dataToSend.packet_len);
-		printf("0x%X\n", dataToSend.crc32);
+		//printf("0x%X\n", dataToSend.crc32);
 		
 		sendto(socketS, (char*)&dataToSend, sizeof(dataToSend), 0, (sockaddr*)&addrDst, sizeof(addrDst));
 
@@ -140,22 +141,23 @@ int main()
 	sendto(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&addrDst, sizeof(addrDst));
 	
 	
-	char* resInput = (char*)calloc(TotalLen, 1);
+	char* resInput = (char*)calloc(TotalLen + 1, 1);
 	
 	u8 resData[16] = { 0 };
 
+
 	rewind(fp);
-	//FILE *getMd5 = fopen()
 	TotalLen = fread(resInput,sizeof(u8), TotalLen, fp);
-	printf("%lu\n", TotalLen);
-
-	for (int i = 0; i < TotalLen; i++)
-		putchar(resInput[i]);
-	putchar('\n');
-
+	
+	resInput[TotalLen] = '\0';
 	md5String(resInput, resData);
 	print_hash(resData);
 
+	memset(resData, 0, 16);
+	md5String("hello", resData);
+	print_hash(resData);
+
+	
 	closesocket(socketS);
 	fclose(fp);
 	free(resInput);
