@@ -17,7 +17,7 @@ enum
 	SYNC,
 	DATA,
 	ACK,
-	LACK,
+	NAK,
 	MASK,
 	STOP
 };
@@ -33,8 +33,9 @@ struct PacketStruct
 	u32 crc32;
 	//keep track of position in a file
 	u32 pos;
-	u32 md5;
+	u8 md5[16];
 	u8 payload[BUFFERS_LEN];
+
 
 }packet;
 
@@ -77,13 +78,17 @@ int main()
 	struct sockaddr_in addrDst = { 0 };
 	struct PacketStruct dataReceived = { 0 };
 	struct PacketStruct dataToSend = { 0 };
+	//struct timeval timeout;
+	//timeout.tv_sec = 3;
+	//timeout.tv_usec = 0;
+
 	int addrDstlen = sizeof(addrDst);
 
-	char* inputFile = "file.mp4";
+	char* inputFile = "monk2.jpg";
 	FILE* fp = fopen(inputFile, "rb");
 	if (!fp)
 		printf("%s\n", strerror(errno));
-	
+
 
 	prepare(&local, &addrDst);
 	socketS = socket(AF_INET, SOCK_DGRAM, 0);
@@ -95,71 +100,109 @@ int main()
 	}
 	int sendingPacketLength = 0;
 	u32 pos = 0;
-	
+
 	int check = 0;
 	int i = 0;
 	u32 crc32;
-	while(1)
+	int bytesReceived = 0;
+	//send greetings
+	struct timeval timeout;
+	timeout.tv_sec = 1;
+	timeout.tv_usec = 0;
+	dataToSend.packet_type = SYNC;
+
+	check = setsockopt(socketS, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
+	//bytesReceived = sendto(socketS, (char*)&dataToSend, sizeof(dataToSend), 0, (sockaddr*)&addrDst, sizeof(addrDst));
+	
+	if (check == SOCKET_ERROR)
+		printf("error in setting timeout\n");
+
+	int err = WSAGetLastError();
+	if (err == WSAETIMEDOUT)
+	{
+		printf("timeout!\n");
+		exit(1);
+	}
+	bytesReceived = recvfrom(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&addrDst, &addrDstlen);
+
+	if (bytesReceived == SOCKET_ERROR && errno == EWOULDBLOCK)
+	{
+		printf("socket timeout!\n");
+		exit(1);
+	}
+
+	if (dataReceived.packet_type != SYNC)
+	{
+		printf("sync failed got: %i\n", dataReceived.packet_type);
+		exit(1);
+	}
+	printf("here we go\n");
+	while (1)
 	{
 		
 		fseek(fp, pos, SEEK_SET);
 		sendingPacketLength = fread(dataToSend.payload, sizeof(u8), sizeof(dataToSend.payload), fp);
 		if (sendingPacketLength <= 0)
 			break;
-		
+
 		dataToSend.packet_type = DATA;
 		dataToSend.pos = pos;
-		
+
 		dataToSend.packet_len = sendingPacketLength;
-		
+
 		pos += dataToSend.packet_len;
-		
+
+		//set crc32
 		dataToSend.crc32 = CRC_CalculateCRC32(dataToSend.payload, dataToSend.packet_len);
 		//printf("0x%X\n", dataToSend.crc32);
-		
+
 		sendto(socketS, (char*)&dataToSend, sizeof(dataToSend), 0, (sockaddr*)&addrDst, sizeof(addrDst));
 		//reset this packet everytime to avoid confusion
 		memset(&dataReceived, 0, sizeof(dataReceived));
+		// if not getting the reply, then send the same packet//
 		check = recvfrom(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&addrDst, &addrDstlen);
-		int timeout = 3000; // 3sec
-		setsockopt(socketS, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
+		//int timeout = 3000; // 3sec
+		//setsockopt(socketS, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
 		switch (dataReceived.packet_type)
 		{
-			case ACK:
-			{
-				pos = dataReceived.pos;
-				break;
-			}
+		case ACK:
+		{
+			pos = dataReceived.pos;
+			break;
 		}
-		
+		case NAK: 
+		{
+			pos = dataReceived.pos;
+			break;
+		}
+
+		}
+
 	}
 
 	printf("finish Sending packet.\n");
 	u32 TotalLen = dataToSend.pos + dataToSend.packet_len;
-	
-	dataReceived.packet_type = STOP;
-	memset(dataReceived.payload, 0, BUFFERS_LEN);
-	sendto(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&addrDst, sizeof(addrDst));
-	
-	
+
 	char* resInput = (char*)calloc(TotalLen + 1, 1);
-	
-	u8 resData[16] = { 0 };
 
-
+	memset(&dataToSend, 0, sizeof(dataToSend));
 	rewind(fp);
-	TotalLen = fread(resInput,sizeof(u8), TotalLen, fp);
-	printf("size is: %lu", TotalLen);
+	TotalLen = fread(resInput, sizeof(u8), TotalLen, fp);
+	printf("size is: %lu\n", TotalLen);
 	resInput[TotalLen] = '\0';
-	md5String(resInput, resData);
-	print_hash(resData);
+	md5String(resInput, dataToSend.md5);
 
-	
+	print_hash(dataToSend.md5);
+	dataToSend.packet_type = STOP;
+	sendto(socketS, (char*)&dataToSend, sizeof(dataToSend), 0, (sockaddr*)&addrDst, sizeof(addrDst));
+
+
+
 	closesocket(socketS);
 	fclose(fp);
 	free(resInput);
-	
+
 	getchar(); //wait for press Enter
-	
+
 	return 0;
 }
