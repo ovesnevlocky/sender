@@ -10,7 +10,11 @@
 #include <string.h>
 #include "md5.h"
 #include "crc32.h"
+#include <stdbool.h>
+
+//maxsize for udp is 65507 bytes 
 #define BUFFERS_LEN 1024
+#define RECV_TIMEOUT_MS 3000
 
 enum
 {
@@ -35,7 +39,6 @@ struct PacketStruct
 	u32 pos;
 	u8 md5[16];
 	u8 payload[BUFFERS_LEN];
-
 
 }packet;
 
@@ -67,6 +70,55 @@ void prepare(struct sockaddr_in* local, struct sockaddr_in* addrDst)
 	InetPton(AF_INET, _T(TARGET_IP), &(addrDst->sin_addr.s_addr));
 
 }
+
+bool isTimeout()
+{
+	int err = WSAGetLastError();
+	return err == WSAETIMEDOUT;
+}
+
+void printError()
+{
+	int err = WSAGetLastError();
+	switch (err)
+	{
+	case WSAETIMEDOUT:
+		printf("error: timeout (%d)\n", err);
+		break;
+	case WSAENOTSOCK:
+		printf("error: invalid socket (%d)\n", err);
+		break;
+	case WSAEMSGSIZE:
+		printf("error: message too large (%d)\n", err);
+		break;
+	case WSAENETUNREACH:
+		printf("error: network unreachable (%d)\n", err);
+		break;
+	case WSANOTINITIALISED:
+		printf("error: WSAStartup not called (%d)\n", err);
+		break;
+	default:
+		printf("error: unknown error (%d)\n", err);
+		break;
+	}
+}
+
+
+bool setTimeout(SOCKET *socketS)
+{
+	WSASetLastError(0);
+	int check = 0;
+	DWORD timeout = RECV_TIMEOUT_MS;
+	check = setsockopt(*socketS, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
+	if (check == SOCKET_ERROR)
+	{
+		printf("error in setting timeout\n");
+		return false;
+	}
+
+	return true;
+
+}
 //**********************************************************************
 int main()
 {
@@ -78,13 +130,10 @@ int main()
 	struct sockaddr_in addrDst = { 0 };
 	struct PacketStruct dataReceived = { 0 };
 	struct PacketStruct dataToSend = { 0 };
-	//struct timeval timeout;
-	//timeout.tv_sec = 3;
-	//timeout.tv_usec = 0;
-
+	
 	int addrDstlen = sizeof(addrDst);
 
-	char* inputFile = "monk2.jpg";
+	char* inputFile = "monk.jpeg";
 	FILE* fp = fopen(inputFile, "rb");
 	if (!fp)
 		printf("%s\n", strerror(errno));
@@ -98,36 +147,30 @@ int main()
 		getchar(); //wait for press Enter
 		return 1;
 	}
-	int sendingPacketLength = 0;
-	u32 pos = 0;
-
-	int check = 0;
-	int i = 0;
-	u32 crc32;
-	int bytesReceived = 0;
-	//send greetings
-	struct timeval timeout;
-	timeout.tv_sec = 1;
-	timeout.tv_usec = 0;
-	dataToSend.packet_type = SYNC;
-
-	check = setsockopt(socketS, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
-	//bytesReceived = sendto(socketS, (char*)&dataToSend, sizeof(dataToSend), 0, (sockaddr*)&addrDst, sizeof(addrDst));
+	int count = 0;
+	u32 pos, crc32;
+	int sendingPacketLength, check, i, bytesReceived;
+	pos = crc32 = sendingPacketLength = check = i = bytesReceived = 0;
 	
-	if (check == SOCKET_ERROR)
-		printf("error in setting timeout\n");
-
-	int err = WSAGetLastError();
-	if (err == WSAETIMEDOUT)
-	{
-		printf("timeout!\n");
-		exit(1);
-	}
+	//send greetings
+	dataToSend.packet_type = SYNC;
+	printf("hello before sendto\n");
+	bytesReceived = sendto(socketS, (char*)&dataToSend, sizeof(dataToSend), 0, (sockaddr*)&addrDst, sizeof(addrDst));
+	printf("hello after sendto\n");
+	if (bytesReceived == SOCKET_ERROR)
+		printf("erroror after sendto\n");
+	
+	setTimeout(&socketS);
 	bytesReceived = recvfrom(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&addrDst, &addrDstlen);
+	
+	if(isTimeout())
+		printf("timeout!\n");
 
-	if (bytesReceived == SOCKET_ERROR && errno == EWOULDBLOCK)
+
+	if (bytesReceived == SOCKET_ERROR)
 	{
-		printf("socket timeout!\n");
+		printf("socket error: %i\n", bytesReceived);
+		printError();
 		exit(1);
 	}
 
@@ -136,48 +179,75 @@ int main()
 		printf("sync failed got: %i\n", dataReceived.packet_type);
 		exit(1);
 	}
-	printf("here we go\n");
+	else
+		printf("got sync, start the communication\n");
+
+	bool isAfterTimeout = false;
 	while (1)
 	{
-		
+
 		fseek(fp, pos, SEEK_SET);
-		sendingPacketLength = fread(dataToSend.payload, sizeof(u8), sizeof(dataToSend.payload), fp);
+
+		if (!isAfterTimeout)
+		{
+			sendingPacketLength = fread(dataToSend.payload, sizeof(u8), sizeof(dataToSend.payload), fp);
+			dataToSend.packet_type = DATA;
+			dataToSend.pos = pos;
+			dataToSend.packet_len = sendingPacketLength;
+			//set crc32
+			dataToSend.crc32 = CRC_CalculateCRC32(dataToSend.payload, dataToSend.packet_len);
+		}
 		if (sendingPacketLength <= 0)
 			break;
-
-		dataToSend.packet_type = DATA;
-		dataToSend.pos = pos;
-
-		dataToSend.packet_len = sendingPacketLength;
-
-		pos += dataToSend.packet_len;
-
-		//set crc32
-		dataToSend.crc32 = CRC_CalculateCRC32(dataToSend.payload, dataToSend.packet_len);
-		//printf("0x%X\n", dataToSend.crc32);
-
+		
 		sendto(socketS, (char*)&dataToSend, sizeof(dataToSend), 0, (sockaddr*)&addrDst, sizeof(addrDst));
+		printf("sending...: %lu\n", pos);
 		//reset this packet everytime to avoid confusion
 		memset(&dataReceived, 0, sizeof(dataReceived));
 		// if not getting the reply, then send the same packet//
+	
+		setTimeout(&socketS);
 		check = recvfrom(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&addrDst, &addrDstlen);
-		//int timeout = 3000; // 3sec
-		//setsockopt(socketS, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
+		if (count == 5)
+		{
+			count += 1;
+			continue;
+		}
+
+		if (isTimeout() || check == -1)
+		{
+			printf("%i: timeout, sending the same data\n", count);
+
+			count++;
+			Sleep(1000);
+			isAfterTimeout = true;
+			continue;
+		}
+		isAfterTimeout = false;
+		//update pos here 
+		pos += dataToSend.packet_len;
 		switch (dataReceived.packet_type)
 		{
 		case ACK:
 		{
 			pos = dataReceived.pos;
+			printf("ack: %lu\n", dataReceived.pos);
 			break;
 		}
-		case NAK: 
-		{
+		case NAK:
+		{ 
+			printf("got nak\n");
+			pos -= dataToSend.packet_len;
+			//pos = pos < 0 ? 0 : pos;
 			pos = dataReceived.pos;
 			break;
 		}
 
 		}
-
+		//printf("check: %d\n", check);
+		//printf("WSAError: %d\n", WSAGetLastError());
+		//printf("packet_type: %d\n", dataReceived.packet_type);
+	
 	}
 
 	printf("finish Sending packet.\n");
