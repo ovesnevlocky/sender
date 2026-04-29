@@ -218,8 +218,6 @@ int main()
 		{
 			printf("%i: timeout, sending the same data\n", count);
 
-			count++;
-			Sleep(1000);
 			isAfterTimeout = true;
 			continue;
 		}
@@ -244,10 +242,7 @@ int main()
 		}
 
 		}
-		//printf("check: %d\n", check);
-		//printf("WSAError: %d\n", WSAGetLastError());
-		//printf("packet_type: %d\n", dataReceived.packet_type);
-	
+		
 	}
 
 	printf("finish Sending packet.\n");
