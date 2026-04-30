@@ -14,7 +14,7 @@
 
 //maxsize for udp is 65507 bytes 
 #define BUFFERS_LEN 1024
-#define RECV_TIMEOUT_MS 3000
+#define RECV_TIMEOUT_MS 4000
 
 enum
 {
@@ -45,11 +45,14 @@ struct PacketStruct
 //#define TARGET_IP	"10.1.6.72"
 #define TARGET_IP "127.0.0.1"
 
-#define SENDER
 
+#define SENDER
 #ifdef SENDER
-#define TARGET_PORT 5111
-#define LOCAL_PORT 5222
+//#define TARGET_PORT 5111
+//#define LOCAL_PORT 5222
+//for net deper
+#define TARGET_PORT 5333
+#define LOCAL_PORT 5444
 #endif // SENDER
 
 
@@ -132,6 +135,7 @@ int main()
 	struct PacketStruct dataToSend = { 0 };
 	
 	int addrDstlen = sizeof(addrDst);
+	int localLen = sizeof(local);
 
 	char* inputFile = "monk.jpeg";
 	FILE* fp = fopen(inputFile, "rb");
@@ -154,16 +158,23 @@ int main()
 	
 	//send greetings
 	dataToSend.packet_type = SYNC;
-	printf("hello before sendto\n");
 	bytesReceived = sendto(socketS, (char*)&dataToSend, sizeof(dataToSend), 0, (sockaddr*)&addrDst, sizeof(addrDst));
-	printf("hello after sendto\n");
+	
 	if (bytesReceived == SOCKET_ERROR)
 		printf("erroror after sendto\n");
 	
+	printf("hello before recfrom outof whileloop\n");
+
 	setTimeout(&socketS);
-	bytesReceived = recvfrom(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&addrDst, &addrDstlen);
-	
-	if(isTimeout())
+		
+	//bytesReceived = recvfrom(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&addrDst, &addrDstlen);
+
+	bytesReceived = recvfrom(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&local, &localLen);
+	printf("hello AFter recfrom outof whileloop\n");
+
+	if (dataReceived.packet_type == SYNC)
+		printf("got sync\n");
+	else if(isTimeout())
 		printf("timeout!\n");
 
 
@@ -172,14 +183,31 @@ int main()
 		printf("socket error: %i\n", bytesReceived);
 		printError();
 		exit(1);
+		//while (1)
+		/*
+		///{
+			count++;
+			dataToSend.packet_type = SYNC;
+			bytesReceived = sendto(socketS, (char*)&dataToSend, sizeof(dataToSend), 0, (sockaddr*)&addrDst, sizeof(addrDst));
+
+			setTimeout(&socketS);
+			bytesReceived = recvfrom(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&addrDst, &addrDstlen);
+			if (!isTimeout())
+				break;
+			if (count >= 100)
+				break;
+		}
+		*/
+		
 	}
+	count = 0;
 
 	if (dataReceived.packet_type != SYNC)
 	{
 		printf("sync failed got: %i\n", dataReceived.packet_type);
 		exit(1);
 	}
-	else
+	else if(dataReceived.packet_type == SYNC)
 		printf("got sync, start the communication\n");
 
 	bool isAfterTimeout = false;
@@ -187,7 +215,7 @@ int main()
 	{
 
 		fseek(fp, pos, SEEK_SET);
-
+		count++;
 		if (!isAfterTimeout)
 		{
 			sendingPacketLength = fread(dataToSend.payload, sizeof(u8), sizeof(dataToSend.payload), fp);
@@ -197,6 +225,7 @@ int main()
 			//set crc32
 			dataToSend.crc32 = CRC_CalculateCRC32(dataToSend.payload, dataToSend.packet_len);
 		}
+
 		if (sendingPacketLength <= 0)
 			break;
 		
@@ -207,17 +236,13 @@ int main()
 		// if not getting the reply, then send the same packet//
 	
 		setTimeout(&socketS);
-		check = recvfrom(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&addrDst, &addrDstlen);
-		if (count == 5)
-		{
-			count += 1;
-			continue;
-		}
+		//check = recvfrom(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&addrDst, &addrDstlen);
+		bytesReceived = recvfrom(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&local, &localLen);
+		
 
 		if (isTimeout() || check == -1)
 		{
 			printf("%i: timeout, sending the same data\n", count);
-
 			isAfterTimeout = true;
 			continue;
 		}
@@ -229,7 +254,6 @@ int main()
 		case ACK:
 		{
 			pos = dataReceived.pos;
-			printf("ack: %lu\n", dataReceived.pos);
 			break;
 		}
 		case NAK:
@@ -243,6 +267,7 @@ int main()
 
 		}
 		
+	
 	}
 
 	printf("finish Sending packet.\n");
