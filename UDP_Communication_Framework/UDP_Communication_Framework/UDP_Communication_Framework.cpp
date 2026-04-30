@@ -1,12 +1,13 @@
 ﻿// UDP_Communication_Framework.cpp : Defines the entry point for the console application.
 //
 
+//https://computerscience.unicam.it/marcantoni/reti/applet/SelectiveRepeatProtocol/selRepProt.html
+
 #pragma comment(lib, "ws2_32.lib")
 #include "stdafx.h"
 #include <winsock2.h>
 #include <stdint.h>
 #include "ws2tcpip.h"
-#include <errno.h>
 #include <string.h>
 #include "md5.h"
 #include "crc32.h"
@@ -31,6 +32,7 @@ typedef uint32_t u32;
 
 struct PacketStruct
 {
+	bool isTimeout;
 	//u32 packet_type;
 	u8  packet_type;
 	u32 packet_len;
@@ -39,7 +41,6 @@ struct PacketStruct
 	u32 pos;
 	u8 md5[16];
 	u8 payload[BUFFERS_LEN];
-
 }packet;
 
 //#define TARGET_IP	"10.1.6.72"
@@ -80,7 +81,9 @@ bool isTimeout()
 	return err == WSAETIMEDOUT;
 }
 
+//https://learn.microsoft.com/en-us/windows/win32/winsock/windows-sockets-error-codes-2
 void printError()
+
 {
 	int err = WSAGetLastError();
 	switch (err)
@@ -134,23 +137,26 @@ int main()
 	struct PacketStruct dataReceived = { 0 };
 	struct PacketStruct dataToSend = { 0 };
 	
+	
 	int addrDstlen = sizeof(addrDst);
 	int localLen = sizeof(local);
 
-	char* inputFile = "monk.jpeg";
+	char* inputFile = "monk_small.jpeg";
 	FILE* fp = fopen(inputFile, "rb");
 	if (!fp)
-		printf("%s\n", strerror(errno));
+		printf("error in opening input file\n");
 
 
 	prepare(&local, &addrDst);
 	socketS = socket(AF_INET, SOCK_DGRAM, 0);
 	if (bind(socketS, (sockaddr*)&local, sizeof(local)) != 0)
 	{
+		printError();
 		printf("Binding error!\n");
 		getchar(); //wait for press Enter
 		return 1;
 	}
+	int packet_count = 0;
 	int count = 0;
 	u32 pos, crc32;
 	int sendingPacketLength, check, i, bytesReceived;
@@ -176,7 +182,6 @@ int main()
 		printf("got sync\n");
 	else if(isTimeout())
 		printf("timeout!\n");
-
 
 	if (bytesReceived == SOCKET_ERROR)
 	{
@@ -213,7 +218,6 @@ int main()
 	bool isAfterTimeout = false;
 	while (1)
 	{
-
 		fseek(fp, pos, SEEK_SET);
 		count++;
 		if (!isAfterTimeout)
@@ -242,10 +246,12 @@ int main()
 
 		if (isTimeout() || check == -1)
 		{
+			count++;
 			printf("%i: timeout, sending the same data\n", count);
 			isAfterTimeout = true;
 			continue;
 		}
+
 		isAfterTimeout = false;
 		//update pos here 
 		pos += dataToSend.packet_len;
@@ -258,9 +264,8 @@ int main()
 		}
 		case NAK:
 		{ 
-			printf("got nak\n");
-			pos -= dataToSend.packet_len;
-			//pos = pos < 0 ? 0 : pos;
+			printf("got nak: ");
+			
 			pos = dataReceived.pos;
 			break;
 		}
@@ -284,10 +289,24 @@ int main()
 
 	print_hash(dataToSend.md5);
 	dataToSend.packet_type = STOP;
+	/*
+	while (1)
+	{
+
+		
+		sendto(socketS, (char*)&dataToSend, sizeof(dataToSend), 0, (sockaddr*)&addrDst, sizeof(addrDst));
+		setTimeout(&socketS);
+		bytesReceived = recvfrom(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&local, &localLen);
+		if(dataReceived.packet_type == STOP)
+		{
+			break;
+
+	}
+	*/
+	///dataToSend.packet_type = STOP;
 	sendto(socketS, (char*)&dataToSend, sizeof(dataToSend), 0, (sockaddr*)&addrDst, sizeof(addrDst));
 
-
-
+	
 	closesocket(socketS);
 	fclose(fp);
 	free(resInput);
