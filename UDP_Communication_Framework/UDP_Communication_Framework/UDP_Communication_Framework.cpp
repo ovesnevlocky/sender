@@ -1,13 +1,12 @@
 ﻿// UDP_Communication_Framework.cpp : Defines the entry point for the console application.
 //
 
-//https://computerscience.unicam.it/marcantoni/reti/applet/SelectiveRepeatProtocol/selRepProt.html
-
 #pragma comment(lib, "ws2_32.lib")
 #include "stdafx.h"
 #include <winsock2.h>
 #include <stdint.h>
 #include "ws2tcpip.h"
+#include <errno.h>
 #include <string.h>
 #include "md5.h"
 #include "crc32.h"
@@ -16,15 +15,16 @@
 //maxsize for udp is 65507 bytes 
 #define BUFFERS_LEN 1024
 #define RECV_TIMEOUT_MS 4000
+#define WINDOW_SIZE 5
 
 enum
 {
-	SYNC,
-	DATA,
-	ACK,
-	NAK,
-	MASK,
-	STOP
+    SYNC,
+    DATA,
+    ACK,
+    NAK,
+    MASK,
+    STOP
 };
 
 typedef uint8_t u8;
@@ -32,18 +32,18 @@ typedef uint32_t u32;
 
 struct PacketStruct
 {
-	bool isTimeout;
-	//u32 packet_type;
-	u8  packet_type;
-	u32 packet_len;
-	u32 crc32;
-	//keep track of position in a file
-	u32 pos;
-	u8 md5[16];
-	u8 payload[BUFFERS_LEN];
+    //u32 packet_type;
+    u8  packet_type;
+    u32 packet_len;
+    u32 crc32;
+    //keep track of position in a file
+    u32 pos;
+    u8 md5[16];
+    u8 payload[BUFFERS_LEN];
+
 }packet;
 
-//#define TARGET_IP	"10.1.6.72"
+//#define TARGET_IP "10.1.6.72"
 #define TARGET_IP "127.0.0.1"
 
 
@@ -59,259 +59,275 @@ struct PacketStruct
 
 void InitWinsock()
 {
-	WSADATA wsaData;
-	WSAStartup(MAKEWORD(2, 2), &wsaData);
+    WSADATA wsaData;
+    WSAStartup(MAKEWORD(2, 2), &wsaData);
 }
 
 void prepare(struct sockaddr_in* local, struct sockaddr_in* addrDst)
 {
-	local->sin_family = AF_INET;
-	local->sin_port = htons(LOCAL_PORT);
-	local->sin_addr.s_addr = INADDR_ANY;
+    local->sin_family = AF_INET;
+    local->sin_port = htons(LOCAL_PORT);
+    local->sin_addr.s_addr = INADDR_ANY;
 
-	addrDst->sin_family = AF_INET;
-	addrDst->sin_port = htons(TARGET_PORT);
-	InetPton(AF_INET, _T(TARGET_IP), &(addrDst->sin_addr.s_addr));
+    addrDst->sin_family = AF_INET;
+    addrDst->sin_port = htons(TARGET_PORT);
+    InetPton(AF_INET, _T(TARGET_IP), &(addrDst->sin_addr.s_addr));
 
 }
 
 bool isTimeout()
 {
-	int err = WSAGetLastError();
-	return err == WSAETIMEDOUT;
+    int err = WSAGetLastError();
+    return err == WSAETIMEDOUT;
 }
 
-//https://learn.microsoft.com/en-us/windows/win32/winsock/windows-sockets-error-codes-2
 void printError()
-
 {
-	int err = WSAGetLastError();
-	switch (err)
-	{
-	case WSAETIMEDOUT:
-		printf("error: timeout (%d)\n", err);
-		break;
-	case WSAENOTSOCK:
-		printf("error: invalid socket (%d)\n", err);
-		break;
-	case WSAEMSGSIZE:
-		printf("error: message too large (%d)\n", err);
-		break;
-	case WSAENETUNREACH:
-		printf("error: network unreachable (%d)\n", err);
-		break;
-	case WSANOTINITIALISED:
-		printf("error: WSAStartup not called (%d)\n", err);
-		break;
-	default:
-		printf("error: unknown error (%d)\n", err);
-		break;
-	}
+    int err = WSAGetLastError();
+    switch (err)
+    {
+    case WSAETIMEDOUT:
+        printf("error: timeout (%d)\n", err);
+        break;
+    case WSAENOTSOCK:
+        printf("error: invalid socket (%d)\n", err);
+        break;
+    case WSAEMSGSIZE:
+        printf("error: message too large (%d)\n", err);
+        break;
+    case WSAENETUNREACH:
+        printf("error: network unreachable (%d)\n", err);
+        break;
+    case WSANOTINITIALISED:
+        printf("error: WSAStartup not called (%d)\n", err);
+        break;
+    default:
+        printf("error: unknown error (%d)\n", err);
+        break;
+    }
 }
 
 
-bool setTimeout(SOCKET *socketS)
+bool setTimeout(SOCKET* socketS)
 {
-	WSASetLastError(0);
-	int check = 0;
-	DWORD timeout = RECV_TIMEOUT_MS;
-	check = setsockopt(*socketS, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
-	if (check == SOCKET_ERROR)
-	{
-		printf("error in setting timeout\n");
-		return false;
-	}
+    WSASetLastError(0);
+    int check = 0;
+    DWORD timeout = RECV_TIMEOUT_MS;
+    check = setsockopt(*socketS, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
+    if (check == SOCKET_ERROR)
+    {
+        printf("error in setting timeout\n");
+        return false;
+    }
 
-	return true;
+    return true;
 
 }
 //**********************************************************************
 int main()
 {
-	SOCKET socketS;
+    SOCKET socketS;
 
-	InitWinsock();
+    InitWinsock();
 
-	struct sockaddr_in local = { 0 };
-	struct sockaddr_in addrDst = { 0 };
-	struct PacketStruct dataReceived = { 0 };
-	struct PacketStruct dataToSend = { 0 };
-	
-	
-	int addrDstlen = sizeof(addrDst);
-	int localLen = sizeof(local);
+    struct sockaddr_in local = { 0 };
+    struct sockaddr_in addrDst = { 0 };
+    struct PacketStruct dataReceived = { 0 };
+    struct PacketStruct dataToSend = { 0 };
 
-	char* inputFile = "monk_small.jpeg";
-	FILE* fp = fopen(inputFile, "rb");
-	if (!fp)
-		printf("error in opening input file\n");
+    int addrDstlen = sizeof(addrDst);
+    int localLen = sizeof(local);
+
+    char* inputFile = "utada.jpeg";
+    FILE* fp = fopen(inputFile, "rb");
+    if (!fp)
+        printf("%s\n", strerror(errno));
+
+    fseek(fp, 0, SEEK_END);
+    u32 fileSize = ftell(fp);
+    rewind(fp);
+
+    prepare(&local, &addrDst);
+    socketS = socket(AF_INET, SOCK_DGRAM, 0);
+    if (bind(socketS, (sockaddr*)&local, sizeof(local)) != 0)
+    {
+        printf("Binding error!\n");
+        getchar(); //wait for press Enter
+        return 1;
+    }
+    int count = 0;
+    u32 pos, crc32;
+    int sendingPacketLength, check, i, bytesReceived;
+    pos = crc32 = sendingPacketLength = check = i = bytesReceived = 0;
+
+    //send greetings
+    dataToSend.packet_type = SYNC;
+    bytesReceived = sendto(socketS, (char*)&dataToSend, sizeof(dataToSend), 0, (sockaddr*)&addrDst, sizeof(addrDst));
+
+    if (bytesReceived == SOCKET_ERROR)
+        printf("erroror after sendto\n");
+
+    printf("hello before recfrom outof whileloop\n");
+
+    setTimeout(&socketS);
+
+    bytesReceived = recvfrom(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&local, &localLen);
+    printf("hello AFter recfrom outof whileloop\n");
+
+    if (dataReceived.packet_type == SYNC)
+        printf("got sync\n");
+    else if (isTimeout())
+        printf("timeout!\n");
 
 
-	prepare(&local, &addrDst);
-	socketS = socket(AF_INET, SOCK_DGRAM, 0);
-	if (bind(socketS, (sockaddr*)&local, sizeof(local)) != 0)
-	{
-		printError();
-		printf("Binding error!\n");
-		getchar(); //wait for press Enter
-		return 1;
-	}
-	int packet_count = 0;
-	int count = 0;
-	u32 pos, crc32;
-	int sendingPacketLength, check, i, bytesReceived;
-	pos = crc32 = sendingPacketLength = check = i = bytesReceived = 0;
-	
-	//send greetings
-	dataToSend.packet_type = SYNC;
-	bytesReceived = sendto(socketS, (char*)&dataToSend, sizeof(dataToSend), 0, (sockaddr*)&addrDst, sizeof(addrDst));
-	
-	if (bytesReceived == SOCKET_ERROR)
-		printf("erroror after sendto\n");
-	
-	printf("hello before recfrom outof whileloop\n");
+    if (bytesReceived == SOCKET_ERROR)
+    {
+        printf("socket error: %i\n", bytesReceived);
+        printError();
+        exit(1);
+    }
 
-	setTimeout(&socketS);
-		
-	//bytesReceived = recvfrom(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&addrDst, &addrDstlen);
+    count = 0;
 
-	bytesReceived = recvfrom(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&local, &localLen);
-	printf("hello AFter recfrom outof whileloop\n");
+    if (dataReceived.packet_type != SYNC)
+    {
+        printf("sync failed got: %i\n", dataReceived.packet_type);
+        exit(1);
+    }
+    else if (dataReceived.packet_type == SYNC)
+        printf("got sync, start the communication\n");
 
-	if (dataReceived.packet_type == SYNC)
-		printf("got sync\n");
-	else if(isTimeout())
-		printf("timeout!\n");
 
-	if (bytesReceived == SOCKET_ERROR)
-	{
-		printf("socket error: %i\n", bytesReceived);
-		printError();
-		exit(1);
-		//while (1)
-		/*
-		///{
-			count++;
-			dataToSend.packet_type = SYNC;
-			bytesReceived = sendto(socketS, (char*)&dataToSend, sizeof(dataToSend), 0, (sockaddr*)&addrDst, sizeof(addrDst));
+    struct PacketStruct window[WINDOW_SIZE];
+    bool acked[WINDOW_SIZE] = { false };
+    bool in_use[WINDOW_SIZE] = { false };
+    DWORD send_time[WINDOW_SIZE] = { 0 };
 
-			setTimeout(&socketS);
-			bytesReceived = recvfrom(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&addrDst, &addrDstlen);
-			if (!isTimeout())
-				break;
-			if (count >= 100)
-				break;
-		}
-		*/
-		
-	}
-	count = 0;
+    u32 base_pos = 0;
+    u32 next_pos = 0;
 
-	if (dataReceived.packet_type != SYNC)
-	{
-		printf("sync failed got: %i\n", dataReceived.packet_type);
-		exit(1);
-	}
-	else if(dataReceived.packet_type == SYNC)
-		printf("got sync, start the communication\n");
+    while (base_pos < fileSize)
+    {
+        while (next_pos < base_pos + (WINDOW_SIZE * BUFFERS_LEN) && next_pos < fileSize)
+        {
+            int slot = (next_pos / BUFFERS_LEN) % WINDOW_SIZE;
 
-	bool isAfterTimeout = false;
-	while (1)
-	{
-		fseek(fp, pos, SEEK_SET);
-		count++;
-		if (!isAfterTimeout)
-		{
-			sendingPacketLength = fread(dataToSend.payload, sizeof(u8), sizeof(dataToSend.payload), fp);
-			dataToSend.packet_type = DATA;
-			dataToSend.pos = pos;
-			dataToSend.packet_len = sendingPacketLength;
-			//set crc32
-			dataToSend.crc32 = CRC_CalculateCRC32(dataToSend.payload, dataToSend.packet_len);
-		}
+            if (!in_use[slot])
+            {
+                fseek(fp, next_pos, SEEK_SET);
+                sendingPacketLength = fread(window[slot].payload, 1, BUFFERS_LEN, fp);
 
-		if (sendingPacketLength <= 0)
-			break;
-		
-		sendto(socketS, (char*)&dataToSend, sizeof(dataToSend), 0, (sockaddr*)&addrDst, sizeof(addrDst));
-		printf("sending...: %lu\n", pos);
-		//reset this packet everytime to avoid confusion
-		memset(&dataReceived, 0, sizeof(dataReceived));
-		// if not getting the reply, then send the same packet//
-	
-		setTimeout(&socketS);
-		//check = recvfrom(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&addrDst, &addrDstlen);
-		bytesReceived = recvfrom(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&local, &localLen);
-		
+                window[slot].packet_type = DATA;
+                window[slot].pos = next_pos;
+                window[slot].packet_len = sendingPacketLength;
+                window[slot].crc32 = CRC_CalculateCRC32(window[slot].payload, sendingPacketLength);
 
-		if (isTimeout() || check == -1)
-		{
-			count++;
-			printf("%i: timeout, sending the same data\n", count);
-			isAfterTimeout = true;
-			continue;
-		}
+                sendto(socketS, (char*)&window[slot], sizeof(struct PacketStruct), 0, (sockaddr*)&addrDst, sizeof(addrDst));
+                printf("sending...: %lu\n", next_pos);
 
-		isAfterTimeout = false;
-		//update pos here 
-		pos += dataToSend.packet_len;
-		switch (dataReceived.packet_type)
-		{
-		case ACK:
-		{
-			pos = dataReceived.pos;
-			break;
-		}
-		case NAK:
-		{ 
-			printf("got nak: ");
-			
-			pos = dataReceived.pos;
-			break;
-		}
+                send_time[slot] = GetTickCount();
+                in_use[slot] = true;
+                acked[slot] = false;
 
-		}
-		
-	
-	}
+                next_pos += sendingPacketLength;
+            }
+            else
+            {
+                break;
+            }
+        }
 
-	printf("finish Sending packet.\n");
-	u32 TotalLen = dataToSend.pos + dataToSend.packet_len;
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(socketS, &readfds);
+        struct timeval tv = { 0, 10000 };
 
-	char* resInput = (char*)calloc(TotalLen + 1, 1);
+        int ready = select(0, &readfds, NULL, NULL, &tv);
+        if (ready > 0)
+        {
+            memset(&dataReceived, 0, sizeof(dataReceived));
+            recvfrom(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&local, &localLen);
 
-	memset(&dataToSend, 0, sizeof(dataToSend));
-	rewind(fp);
-	TotalLen = fread(resInput, sizeof(u8), TotalLen, fp);
-	printf("size is: %lu\n", TotalLen);
-	resInput[TotalLen] = '\0';
-	md5String(resInput, dataToSend.md5);
+            int slot = (dataReceived.pos / BUFFERS_LEN) % WINDOW_SIZE;
 
-	print_hash(dataToSend.md5);
-	dataToSend.packet_type = STOP;
-	/*
-	while (1)
-	{
+            switch (dataReceived.packet_type)
+            {
+            case ACK:
+            {
+                if (dataReceived.pos >= base_pos && dataReceived.pos < base_pos + (WINDOW_SIZE * BUFFERS_LEN))
+                {
+                    acked[slot] = true;
 
-		
-		sendto(socketS, (char*)&dataToSend, sizeof(dataToSend), 0, (sockaddr*)&addrDst, sizeof(addrDst));
-		setTimeout(&socketS);
-		bytesReceived = recvfrom(socketS, (char*)&dataReceived, sizeof(dataReceived), 0, (sockaddr*)&local, &localLen);
-		if(dataReceived.packet_type == STOP)
-		{
-			break;
+                    if (dataReceived.pos == base_pos)
+                    {
+                        while (acked[(base_pos / BUFFERS_LEN) % WINDOW_SIZE])
+                        {
+                            int s = (base_pos / BUFFERS_LEN) % WINDOW_SIZE;
+                            acked[s] = false;
+                            in_use[s] = false;
+                            base_pos += window[s].packet_len;
+                            if (base_pos >= fileSize) break;
+                        }
+                    }
+                }
+                break;
+            }
+            case NAK:
+            {
+                printf("got nak\n");
+                if (in_use[slot] && !acked[slot])
+                {
+                    sendto(socketS, (char*)&window[slot], sizeof(struct PacketStruct), 0, (sockaddr*)&addrDst, sizeof(addrDst));
+                    send_time[slot] = GetTickCount();
+                }
+                break;
+            }
+            }
+        }
 
-	}
-	*/
-	///dataToSend.packet_type = STOP;
-	sendto(socketS, (char*)&dataToSend, sizeof(dataToSend), 0, (sockaddr*)&addrDst, sizeof(addrDst));
+        // if not getting the reply, then send the same packet//
+        DWORD current_time = GetTickCount();
+        for (u32 check_pos = base_pos; check_pos < next_pos; check_pos += BUFFERS_LEN)
+        {
+            int slot = (check_pos / BUFFERS_LEN) % WINDOW_SIZE;
+            if (in_use[slot] && !acked[slot])
+            {
+                if (current_time - send_time[slot] > 1000)
+                {
+                    count++;
+                    printf("%i: timeout, sending the same data\n", count);
+                    sendto(socketS, (char*)&window[slot], sizeof(struct PacketStruct), 0, (sockaddr*)&addrDst, sizeof(addrDst));
+                    send_time[slot] = GetTickCount();
+                }
+            }
+        }
+    }
 
-	
-	closesocket(socketS);
-	fclose(fp);
-	free(resInput);
+    printf("finish Sending packet.\n");
+    u32 TotalLen = fileSize;
 
-	getchar(); //wait for press Enter
+    char* resInput = (char*)calloc(TotalLen + 1, 1);
 
-	return 0;
+    memset(&dataToSend, 0, sizeof(dataToSend));
+    rewind(fp);
+    TotalLen = fread(resInput, sizeof(u8), TotalLen, fp);
+    printf("size is: %lu\n", TotalLen);
+
+    MD5Context ctx;
+    md5Init(&ctx);
+    md5Update(&ctx, (uint8_t*)resInput, TotalLen);
+    md5Finalize(&ctx);
+    memcpy(dataToSend.md5, ctx.digest, 16);
+
+    print_hash(dataToSend.md5);
+    dataToSend.packet_type = STOP;
+    sendto(socketS, (char*)&dataToSend, sizeof(dataToSend), 0, (sockaddr*)&addrDst, sizeof(addrDst));
+
+    closesocket(socketS);
+    fclose(fp);
+    free(resInput);
+
+    getchar(); //wait for press Enter
+
+    return 0;
 }
